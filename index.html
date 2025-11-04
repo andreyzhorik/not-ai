@@ -39,14 +39,16 @@
       padding: 20px;
       overflow-y: auto;
       height: 60vh;
+      display: flex;
+      flex-direction: column;
     }
 
     .msg {
-      margin: 10px 0;
+      margin: 8px 0;
       padding: 10px 14px;
       border-radius: 12px;
-      line-height: 1.4;
       white-space: pre-wrap;
+      line-height: 1.4;
     }
 
     .user {
@@ -63,7 +65,7 @@
     }
 
     #controls {
-      margin-top: 20px;
+      margin-top: 15px;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -101,10 +103,6 @@
       background: #2563eb;
     }
 
-    .locked {
-      color: #f87171;
-    }
-
     #status {
       text-align: center;
       margin-top: 10px;
@@ -127,14 +125,15 @@
     </select>
 
     <input id="invite" type="password" placeholder="Invite code (only for locked models)">
-    <textarea id="input" placeholder="Ask a question or request code help..."></textarea>
+    <textarea id="input" placeholder="Ask your question or coding task..."></textarea>
     <button onclick="send()">Send</button>
+    <button onclick="clearChat()">Clear Chat</button>
   </div>
 
   <p id="status"></p>
 
   <script>
-    const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev/";
+    const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev";
     const chatBox = document.getElementById("chat-box");
     const inviteInput = document.getElementById("invite");
     const status = document.getElementById("status");
@@ -151,6 +150,11 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    function clearChat() {
+      chatBox.innerHTML = "";
+      addMessage("Chat cleared.", "ai");
+    }
+
     async function send() {
       const model = document.getElementById("model").value;
       const inviteCode = inviteInput.value.trim();
@@ -158,7 +162,6 @@
       const userText = input.value.trim();
       if (!userText) return;
 
-      // Remember code locally
       if (inviteCode) localStorage.setItem("inviteCode", inviteCode);
 
       addMessage(userText, "user");
@@ -166,19 +169,18 @@
       addMessage("Thinking...", "ai");
 
       try {
-  const res = await fetch(WORKER_URL, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    model,
-    inviteCode,
-    messages: [
-      { role: "system", content: "You are a helpful AI for students and coding help." },
-      { role: "user", content: userText }
-    ]
-  })
-});
-
+        const res = await fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            inviteCode,
+            messages: [
+              { role: "system", content: "You are a helpful AI for students and coding help." },
+              { role: "user", content: userText }
+            ]
+          })
+        });
 
         const data = await res.json();
         chatBox.lastElementChild.remove();
@@ -195,6 +197,5 @@
       }
     }
   </script>
-
 </body>
 </html>
