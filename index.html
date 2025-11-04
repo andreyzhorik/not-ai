@@ -1,63 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>GPT via Cloudflare Worker</title>
-<style>
-  body { font-family: Arial, sans-serif; background:#0f1720; color:#e6eef8; padding:20px; text-align:center; }
-  .chat { max-width:700px; margin:0 auto; }
-  textarea { width:100%; height:90px; padding:10px; border-radius:8px; border:none; background:#0b1320; color:#fff; }
-  button { margin-top:8px; padding:10px 18px; border-radius:8px; border:none; cursor:pointer; background:#2563eb; color:#fff; }
-  pre { text-align:left; background:#071025; padding:12px; border-radius:8px; min-height:120px; white-space:pre-wrap; }
-</style>
-</head>
-<body>
-  <div class="chat">
-    <h1>GPT via Worker</h1>
-    <textarea id="input" placeholder="Ask a question..."></textarea>
-    <br />
-    <button id="send">Send</button>
-    <pre id="output">Response will appear here...</pre>
-  </div>
-
-<script>
-const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev/"; // <-- replace
-
-document.getElementById("send").addEventListener("click", async () => {
-  const userText = document.getElementById("input").value.trim();
-  if (!userText) return alert("Type something!");
-
-  document.getElementById("output").textContent = "Thinking...";
-
-  try {
-    const response = await fetch(WORKER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // prefer `messages` for chat completion
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: userText }
-        ],
-        // model: optional override
-        // model: "gpt-4o-mini"
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      document.getElementById("output").textContent = "Error: " + response.status + " — " + errText;
-      return;
+  <meta charset="UTF-8">
+  <title>AI Study Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --text: #e6edf3;
+      --accent: #3b82f6;
+      --accent-glow: #60a5fa55;
     }
 
-    const data = await response.json();
-    // typical OpenAI response: data.choices[0].message.content
-    const assistant = data.choices?.[0]?.message?.content ?? JSON.stringify(data, null, 2);
-    document.getElementById("output").textContent = assistant;
-  } catch (err) {
-    document.getElementById("output").textContent = "Network error: " + err.message;
-  }
-});
-</script>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+
+    #chat-box {
+      width: 100%;
+      max-width: 700px;
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: 0 0 12px var(--accent-glow);
+      padding: 20px;
+      overflow-y: auto;
+      height: 60vh;
+    }
+
+    .msg {
+      margin: 10px 0;
+      padding: 10px 14px;
+      border-radius: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .user {
+      background: var(--accent);
+      color: #fff;
+      align-self: flex-end;
+      text-align: right;
+    }
+
+    .ai {
+      background: #21262d;
+      color: var(--text);
+      align-self: flex-start;
+    }
+
+    #controls {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    select, input, textarea, button {
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 1rem;
+      border: none;
+      outline: none;
+    }
+
+    select, input, button {
+      background: #1f2937;
+      color: var(--text);
+    }
+
+    textarea {
+      resize: none;
+      height: 80px;
+      background: #111827;
+      color: var(--text);
+    }
+
+    button {
+      background: var(--accent);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    .locked {
+      color: #f87171;
+    }
+
+    #status {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>AI Study Assistant</h1>
+  <div id="chat-box"></div>
+
+  <div id="controls">
+    <select id="model">
+      <option value="gpt-4o-mini">GPT-4o Mini (Free)</option>
+      <option value="gpt-4-turbo">GPT-4 Turbo (Free)</option>
+      <option value="gpt-4o">🔒 GPT-4o (Invite Required)</option>
+      <option value="gpt-5-mini">🔒 GPT-5 Mini (Invite Required)</option>
+    </select>
+
+    <input id="invite" type="password" placeholder="Invite code (only for locked models)">
+    <textarea id="input" placeholder="Ask a question or request code help..."></textarea>
+    <button onclick="send()">Send</button>
+  </div>
+
+  <p id="status"></p>
+
+  <script>
+    const WORKER_URL = "https://YOUR-WORKER.username.workers.dev";
+    const chatBox = document.getElementById("chat-box");
+    const inviteInput = document.getElementById("invite");
+    const status = document.getElementById("status");
+
+    // Load saved invite code
+    const savedCode = localStorage.getItem("inviteCode");
+    if (savedCode) inviteInput.value = savedCode;
+
+    function addMessage(content, sender) {
+      const msg = document.createElement("div");
+      msg.classList.add("msg", sender);
+      msg.textContent = content;
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function send() {
+      const model = document.getElementById("model").value;
+      const inviteCode = inviteInput.value.trim();
+      const input = document.getElementById("input");
+      const userText = input.value.trim();
+      if (!userText) return;
+
+      // Remember code locally
+      if (inviteCode) localStorage.setItem("inviteCode", inviteCode);
+
+      addMessage(userText, "user");
+      input.value = "";
+      addMessage("Thinking...", "ai");
+
+      try {
+        const res = await fetch(WORKER_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            inviteCode,
+            messages: [
+              { role: "system", content: "You are a helpful AI for students and coding help." },
+              { role: "user", content: userText }
+            ]
+          })
+        });
+
+        const data = await res.json();
+        chatBox.lastElementChild.remove();
+
+        if (data.error) {
+          addMessage("❌ " + data.error, "ai");
+        } else {
+          addMessage(data.choices?.[0]?.message?.content || "No response.", "ai");
+        }
+
+      } catch (err) {
+        chatBox.lastElementChild.remove();
+        addMessage("⚠️ Network error: " + err.message, "ai");
+      }
+    }
+  </script>
+
 </body>
 </html>
