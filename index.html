@@ -120,8 +120,8 @@
 
   <div id="controls">
     <select id="model">
-      <option value="gpt-4o-mini">GPT-4o Mini (Free)</option>
-      <option value="gpt-4-turbo">GPT-4 Turbo (Free)</option>
+      <option value="gpt-4o-mini">GPT-4o Mini (Free and study)</option>
+      <option value="gpt-4-turbo">GPT-4 Turbo (Free and code)</option>
       <option value="gpt-4o">🔒 GPT-4o (Invite Required)</option>
       <option value="gpt-5-mini">🔒 GPT-5 Mini (Invite Required)</option>
     </select>
@@ -134,7 +134,7 @@
   <p id="status"></p>
 
   <script>
-    const WORKER_URL = "https://YOUR-WORKER.username.workers.dev";
+    const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev/";
     const chatBox = document.getElementById("chat-box");
     const inviteInput = document.getElementById("invite");
     const status = document.getElementById("status");
@@ -173,7 +173,7 @@
             model,
             inviteCode,
             messages: [
-              { role: "system", content: "You are a helpful AI for students and coding help." },
+              { role: "system", content: "You are an advanced AI from 2025. Your task is to help students with assignments, explain answers clearly, and assist with HTML, CSS, and JavaScript coding." },
               { role: "user", content: userText }
             ]
           })
