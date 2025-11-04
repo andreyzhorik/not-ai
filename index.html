@@ -166,18 +166,19 @@
       addMessage("Thinking...", "ai");
 
       try {
-        const res = await fetch(WORKER_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            inviteCode,
-            messages: [
-              { role: "system", content: "You are an advanced AI from 2025. Your task is to help students with assignments, explain answers clearly, and assist with HTML, CSS, and JavaScript coding." },
-              { role: "user", content: userText }
-            ]
-          })
-        });
+  const res = await fetch(WORKER_URL, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model,
+    inviteCode,
+    messages: [
+      { role: "system", content: "You are a helpful AI for students and coding help." },
+      { role: "user", content: userText }
+    ]
+  })
+});
+
 
         const data = await res.json();
         chatBox.lastElementChild.remove();
