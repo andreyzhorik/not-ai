@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <title>GPT via Cloudflare Worker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="styles.css"> <!-- Link to external CSS file -->
+    <link rel="stylesheet" href="styles.css"> <!-- Optional external CSS link -->
 </head>
 <body>
-    <header>GPT via Worker</header>
+    <header>NOT AI GPT-4o mini</header>
     <div id="chat-box"></div>
     <footer>
         <textarea id="input" placeholder="Type your message..."></textarea>
@@ -36,7 +36,7 @@ header {
     font-weight: 700;
     color: #60a5fa;
     border-bottom: 1px solid #1e293b;
-    background: #1e293b;
+    background: #1e293b; /* Added background color */
 }
 
 #chat-box {
@@ -95,7 +95,7 @@ textarea {
 }
 
 textarea:focus {
-    background: #0b1320;
+    background: #0b1320; /* Focus state background color */
 }
 
 button {
@@ -107,12 +107,11 @@ button {
     background: #2563eb;
     color: white;
     font-weight: 600;
-    transition: background 0.3s, transform 0.2s;
+    transition: background 0.2s;
 }
 
 button:hover {
     background: #1d4ed8;
-    transform: scale(1.05);
 }
 
 .loading {
