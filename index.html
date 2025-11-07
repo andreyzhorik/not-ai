@@ -5,7 +5,6 @@
 <title>NOT AI – Chat UI</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  /* === THEME === */
   :root {
     --bg: #0a0f1c;
     --panel: #10182a;
@@ -30,7 +29,6 @@
     align-items: center;
   }
 
-  /* === APP CONTAINER === */
   .app {
     width: 95%;
     max-width: 800px;
@@ -44,7 +42,6 @@
     border: 1px solid rgba(255,255,255,0.05);
   }
 
-  /* === HEADER === */
   header {
     padding: 18px 22px;
     display: flex;
@@ -74,25 +71,24 @@
     box-shadow: 0 4px 15px rgba(59,130,246,0.3);
   }
 
-  .title {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--accent);
-  }
+  .title { font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+  .subtitle { font-size: 0.85rem; color: var(--muted); }
 
-  .subtitle {
-    font-size: 0.85rem;
-    color: var(--muted);
-  }
+  .controls { display: flex; align-items: center; gap: 10px; }
 
-  .controls {
-    display: flex;
-    gap: 10px;
+  select {
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .btn {
-    background: rgba(255,255,255,0.05);
-    color: var(--text);
+    background: var(--accent);
+    color: #fff;
     border: none;
     padding: 8px 14px;
     border-radius: 10px;
@@ -101,20 +97,8 @@
     transition: background 0.2s;
   }
 
-  .btn:hover {
-    background: rgba(255,255,255,0.1);
-  }
+  .btn:hover { background: var(--accent-soft); }
 
-  .btn.primary {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  .btn.primary:hover {
-    background: var(--accent-soft);
-  }
-
-  /* === CHAT BOX === */
   .chat-box {
     flex: 1;
     padding: 22px;
@@ -148,14 +132,6 @@
     border-bottom-right-radius: 6px;
   }
 
-  .meta {
-    margin-top: 4px;
-    font-size: 0.75rem;
-    color: var(--muted);
-    text-align: right;
-  }
-
-  /* === INPUT AREA === */
   footer {
     display: flex;
     align-items: center;
@@ -178,9 +154,7 @@
     outline: none;
   }
 
-  textarea::placeholder {
-    color: var(--muted);
-  }
+  textarea::placeholder { color: var(--muted); }
 
   button.send {
     background: var(--accent);
@@ -195,16 +169,10 @@
     transition: all 0.2s ease;
   }
 
-  button.send:hover {
-    background: var(--accent-soft);
-  }
+  button.send:hover { background: var(--accent-soft); }
 
-  /* === SCROLL === */
   ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.1);
-    border-radius: 4px;
-  }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
   @media (max-width: 640px) {
     .app { height: 100vh; border-radius: 0; }
@@ -224,41 +192,49 @@
         </div>
       </div>
       <div class="controls">
-        <button class="btn">New</button>
-        <button class="btn primary">Connect</button>
+        <select id="provider">
+          <option value="gpt-4o-mini">GPT-4o Mini (Free)</option>
+          <option value="gpt-4o" data-locked="true">GPT-4o (Invite)</option>
+          <option value="gpt-5-mini" data-locked="true">GPT-5 Mini (Invite)</option>
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+        </select>
+        <button class="btn" id="clear">Clear</button>
       </div>
     </header>
 
-    <main class="chat-box">
-      <div class="msg assistant">Hello! I’m your AI assistant. How can I help today?</div>
-      <div class="msg user">Hi there! Just testing the new interface.</div>
-      <div class="msg assistant">Looks great — I love this clean design!</div>
-    </main>
+    <main class="chat-box" id="chat"></main>
 
     <footer>
-      <textarea placeholder="Type your message..."></textarea>
-      <button class="send">Send</button>
+      <textarea id="prompt" placeholder="Type your message..."></textarea>
+      <button class="send" id="send">Send</button>
     </footer>
   </div>
 
   <script>
-    const WORKER_URL = "plain-pine-b32a.mrviktor2426.workers.dev";
+    const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev";
     const INVITE_KEY = "invite_code";
 
-    const providerSelect = document.getElementById("provider");
-    const promptInput = document.getElementById("prompt");
+    const chatBox = document.getElementById("chat");
     const sendBtn = document.getElementById("send");
-    const chatDiv = document.getElementById("chat");
+    const promptInput = document.getElementById("prompt");
+    const providerSelect = document.getElementById("provider");
+    const clearBtn = document.getElementById("clear");
 
-    function showMessage(msg) {
-      chatDiv.textContent += msg + "\n";
+    function addMessage(content, role) {
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      div.textContent = content;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
     }
+
+    clearBtn.onclick = () => { chatBox.innerHTML = ""; };
 
     providerSelect.addEventListener("change", async () => {
       const selected = providerSelect.selectedOptions[0];
       if (selected.dataset.locked === "true") {
-        const savedCode = localStorage.getItem(INVITE_KEY);
-        if (!savedCode) {
+        const saved = localStorage.getItem(INVITE_KEY);
+        if (!saved) {
           const code = prompt("🔒 This model requires an invite code:");
           if (!code) {
             alert("No code entered — reverting to free model.");
@@ -279,11 +255,11 @@
     });
 
     sendBtn.onclick = async () => {
+      const text = promptInput.value.trim();
+      if (!text) return;
       const provider = providerSelect.value;
-      const prompt = promptInput.value.trim();
-      if (!prompt) return alert("Enter a message!");
 
-      showMessage("🧠 You: " + prompt);
+      addMessage(text, "user");
       promptInput.value = "";
 
       try {
@@ -292,19 +268,19 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             provider,
-            messages: [{ role: "user", content: prompt }],
+            messages: [{ role: "user", content: text }],
           }),
         });
 
         const data = await res.json();
         if (data.error) {
-          showMessage("❌ Error: " + JSON.stringify(data));
+          addMessage("❌ Error: " + data.error, "assistant");
         } else {
           const reply = data.choices?.[0]?.message?.content || "⚠️ No reply";
-          showMessage("🤖 AI: " + reply);
+          addMessage(reply, "assistant");
         }
       } catch (err) {
-        showMessage("⚠️ Network error: " + err.message);
+        addMessage("⚠️ Network error: " + err.message, "assistant");
       }
     };
   </script>
