@@ -273,12 +273,17 @@
         });
 
         const data = await res.json();
-        if (data.error) {
-          addMessage("❌ Error: " + data.error, "assistant");
-        } else {
-          const reply = data.choices?.[0]?.message?.content || "⚠️ No reply";
-          addMessage(reply, "assistant");
-        }
+       if (data.error) {
+  const errMsg =
+    typeof data.error === "string"
+      ? data.error
+      : JSON.stringify(data.error, null, 2);
+  addMessage("❌ Error:\n" + errMsg, "assistant");
+} else {
+  const reply = data.choices?.[0]?.message?.content || "⚠️ No reply";
+  addMessage(reply, "assistant");
+}
+
       } catch (err) {
         addMessage("⚠️ Network error: " + err.message, "assistant");
       }
