@@ -55,9 +55,9 @@
         <label class="small" for="provider">Model</label>
         <select id="provider" title="Choose model">
           <!-- locked models have data-locked="true" -->
-          <option value="gpt-4o-mini" data-locked="true">GPT-4o-mini (free and good thinking)</option>
+          <option value="gpt-4o-mini" data-locked="false">GPT-4o-mini (free and good thinking)</option>
           <option value="gpt-4o" data-locked="true">GPT-4o (locked and good for everything)</option>
-          <option value="gpt-4.1" data-locked="false">GPT-4.1-mini (locked and good for school)</option>
+          <option value="gpt-4.1-mini" data-locked="true">GPT-4.1-mini (locked and good for school)</option>
           <option value="gpt-3.5-turbo" data-locked="false">GPT-3.5-turbo (free and simple)</option>
         </select>
         <button class="btn" id="clearBtn" title="Clear chat">Clear</button>
@@ -74,230 +74,226 @@
 
 <script>
 (() => {
-  // === CONFIG: set your worker URL (must include https://) ===
-  const WORKER_URL = "https://plain-pine-b32a.mrviktor2426.workers.dev"; // <-- update if different
+  /* ========== CONFIG ========== */
+  // Set your two worker endpoints here:
+  const PRIMARY_API = "https://plain-pine-b32a.mrviktor2426.workers.dev/"; // primary (main)
+  const BACKUP_API  = "https://wispy-voice-741d.mrviktor2426.workers.dev";            // backup (replace this)
 
-  // === DOM ===
-  const chatEl = document.getElementById("chat");
+  /* ========== DOM ELEMENTS (expected) ========== */
   const providerSel = document.getElementById("provider");
+  const chatEl = document.getElementById("chat");
   const promptEl = document.getElementById("prompt");
-  const sendBtn = document.getElementById("sendBtn");
+  const sendBtn = document.getElementById("sendBtn") || document.getElementById("send");
   const clearBtn = document.getElementById("clearBtn");
 
-  const INVITE_STORE_PREFIX = "invite_for_"; // localStorage key per model
+  if (!chatEl || !promptEl || !sendBtn) {
+    console.error("Script requires elements with IDs: chat, prompt, sendBtn (or send).");
+    return;
+  }
 
-  // helpers
-  function createMsg(text, role = "assistant") {
+  /* ========== Populate dropdown exactly as requested ========== */
+  if (providerSel) {
+    providerSel.innerHTML = `
+      <option value="gpt-4.1-mini" data-locked="true">GPT-4.1-mini (locked)</option>
+      <option value="gpt-4o" data-locked="true">GPT-4o (locked)</option>
+      <option value="gpt-4o-mini" data-locked="false">GPT-4o-mini (free)</option>
+      <option value="gpt-3.5-turbo" data-locked="false">GPT-3.5-turbo (free)</option>
+    `;
+  }
+
+  /* ========== Helpers ========== */
+  function nodeMsg(text, role = "assistant") {
     const div = document.createElement("div");
     div.className = "msg " + (role === "user" ? "user" : "assistant");
     div.textContent = text;
     return div;
   }
-
-  function addMeta(node, text) {
+  function nodeMeta(text) {
     const m = document.createElement("div");
     m.className = "meta";
     m.textContent = text;
-    node.appendChild(m);
+    return m;
   }
-
-  function showTyping() {
-    const box = document.createElement("div");
-    box.className = "msg assistant";
-    box.id = "typingIndicator";
-    const t = document.createElement("div");
-    t.className = "typing";
-    t.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
-    box.appendChild(t);
-    chatEl.appendChild(box);
+  function append(node) {
+    chatEl.appendChild(node);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
-
-  function hideTyping() {
-    const el = document.getElementById("typingIndicator");
-    if (el) el.remove();
-  }
-
-  // display readable error JSON or string
   function readableError(err) {
     if (!err) return "Unknown error";
     if (typeof err === "string") return err;
     try { return JSON.stringify(err, null, 2); } catch { return String(err); }
   }
 
-  // check invite for a locked model via worker /verify_code
-  async function verifyInviteForModel(model, code) {
-    try {
-      const url = new URL(WORKER_URL);
-      url.searchParams.set("verify_code", code);
-      // optional: include model param if your worker needs it
-      url.searchParams.set("model", model);
-      const res = await fetch(url.toString(), { method: "GET" });
-      const json = await res.json();
-      return !!json.valid;
-    } catch (e) {
-      console.error("verifyInviteForModel error", e);
-      return false;
-    }
+  /* typing indicator */
+  function showTyping() {
+    if (document.getElementById("typingIndicator")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "msg assistant";
+    wrap.id = "typingIndicator";
+    const t = document.createElement("div");
+    t.className = "typing";
+    t.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    wrap.appendChild(t);
+    append(wrap);
   }
-
-  // when selecting a model that is locked, prompt and verify
-  providerSel.addEventListener("change", async (ev) => {
-    const sel = providerSel.selectedOptions[0];
-    const model = sel.value;
-    const locked = sel.dataset.locked === "true";
-    if (!locked) return;
-
-    const stored = localStorage.getItem(INVITE_STORE_PREFIX + model);
-    if (stored) return; // already unlocked
-
-    // ask user for code
-    const code = prompt("🔒 This model requires an invite code. Enter code to unlock " + model + ":");
-    if (!code) {
-      alert("No code entered — switching to GPT-4o-mini.");
-      providerSel.value = "gpt-4o-mini";
-      return;
-    }
-
-    // verify with worker
-    addSystemMessage("Verifying invite…");
-    const ok = await verifyInviteForModel(model, code);
-    removeSystemMessages();
-    if (ok) {
-      localStorage.setItem(INVITE_STORE_PREFIX + model, code);
-      alert("✅ Invite accepted for " + model);
-    } else {
-      alert("❌ Invalid invite. Reverting to GPT-4o-mini.");
-      providerSel.value = "gpt-4o-mini";
-    }
-  });
-
-  // small helper to add a temporary system message (non-sent)
-  function addSystemMessage(msgText) {
-    const node = createMsg(msgText, "assistant");
-    node.id = "systemMsg";
-    chatEl.appendChild(node);
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-  function removeSystemMessages() {
-    const el = document.getElementById("systemMsg");
+  function hideTyping() {
+    const el = document.getElementById("typingIndicator");
     if (el) el.remove();
   }
 
-  // send message -> worker -> openai
-  async function sendMessage(text) {
-    const model = providerSel.value;
+  /* Basic GET verification helper: tries primary then backup if primary fails */
+  async function verifyInvite(model, code) {
+    // If model == 'gpt-4o-mini' backup supports it; otherwise backup likely won't verify locked models.
+    const tryVerify = async (baseUrl) => {
+      try {
+        const u = new URL(baseUrl);
+        u.searchParams.set("verify_code", code);
+        u.searchParams.set("model", model);
+        const res = await fetch(u.toString(), { method: "GET" });
+        if (!res.ok) return false;
+        const j = await res.json().catch(() => null);
+        return !!(j && j.valid);
+      } catch (e) {
+        return false;
+      }
+    };
 
-    // show user message
-    const u = createMsg(text, "user");
-    chatEl.appendChild(u);
-    chatEl.scrollTop = chatEl.scrollHeight;
+    // Primary first
+    const primaryOk = await tryVerify(PRIMARY_API);
+    if (primaryOk) return true;
+    // fallback: try backup (only useful for gpt-4o-mini verification in your setup)
+    const backupOk = await tryVerify(BACKUP_API);
+    return backupOk;
+  }
 
-    // typing indicator
-    showTyping();
-
-    // prepare payload
-    const payload = { provider: model, messages: [{ role: "user", content: text }] };
-
+  /* Send request to a worker URL. Returns parsed JSON or { error: ... } */
+  async function callWorker(baseUrl, provider, messages) {
     try {
-      const res = await fetch(WORKER_URL, {
+      const res = await fetch(baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ provider, messages }),
       });
-
-      // parse JSON safely
-      const textResp = await res.text();
-      let data;
-      try { data = JSON.parse(textResp); } catch (e) { data = { error: textResp }; }
-
-      // if API-level error present
-      if (data?.error) {
-        // show readable error
-        const errObj = data.error;
-        const errStr = readableError(errObj);
-        hideTyping();
-
-        // If it is insufficient_quota, fallback to gpt-4o-mini automatically once
-        const isQuota = (errObj && (errObj.code === "insufficient_quota" || (typeof errObj === "string" && errObj.toLowerCase().includes("quota"))));
-        if (isQuota && model !== "gpt-4o-mini") {
-          const notice = createMsg("⚠️ Quota error for " + model + ". Falling back to gpt-4o-mini...", "assistant");
-          chatEl.appendChild(notice);
-          chatEl.scrollTop = chatEl.scrollHeight;
-
-          // try again with fallback model
-          const fallbackPayload = { provider: "gpt-4o-mini", messages: [{ role: "user", content: text }] };
-          showTyping();
-          try {
-            const res2 = await fetch(WORKER_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(fallbackPayload),
-            });
-            const txt2 = await res2.text();
-            let data2;
-            try { data2 = JSON.parse(txt2); } catch { data2 = { error: txt2 }; }
-            hideTyping();
-            if (data2?.error) {
-              const errNode = createMsg("❌ Error after fallback: " + readableError(data2.error), "assistant");
-              chatEl.appendChild(errNode);
-            } else {
-              const reply = data2.choices?.[0]?.message?.content ?? "⚠️ No reply";
-              const a = createMsg(reply, "assistant");
-              chatEl.appendChild(a);
-            }
-          } catch (e2) {
-            hideTyping();
-            const errNode = createMsg("⚠️ Network error during fallback: " + e2.message, "assistant");
-            chatEl.appendChild(errNode);
-          }
-          chatEl.scrollTop = chatEl.scrollHeight;
-          return;
-        }
-
-        // otherwise show the error
-        const errNode = createMsg("❌ Error: " + errStr, "assistant");
-        chatEl.appendChild(errNode);
-        chatEl.scrollTop = chatEl.scrollHeight;
-        return;
+      const txt = await res.text();
+      try {
+        return JSON.parse(txt);
+      } catch {
+        return { error: txt };
       }
-
-      // success path
-      hideTyping();
-      const reply = data?.choices?.[0]?.message?.content ?? "⚠️ No reply";
-      const a = createMsg(reply, "assistant");
-      chatEl.appendChild(a);
-      chatEl.scrollTop = chatEl.scrollHeight;
-    } catch (networkErr) {
-      hideTyping();
-      const errNode = createMsg("⚠️ Network error: " + (networkErr.message || networkErr), "assistant");
-      chatEl.appendChild(errNode);
-      chatEl.scrollTop = chatEl.scrollHeight;
+    } catch (err) {
+      return { error: { message: err.message || String(err) } };
     }
   }
 
-  // wire send button and enter
+  /* Primary send logic with fallback to backup. Backup supports only gpt-4o-mini, so we will switch model to that when using backup. */
+  async function sendMessage(text) {
+    const selectedModel = providerSel ? providerSel.value : "gpt-4o-mini";
+    append(nodeMsg(text, "user"));
+
+    // Show typing
+    showTyping();
+
+    // Try primary first with the selected model
+    let resp = await callWorker(PRIMARY_API, selectedModel, [{ role: "user", content: text }]);
+
+    // If primary responded with insufficient_quota error -> attempt fallback to gpt-4o-mini on primary first
+    if (resp && resp.error && (resp.error.code === "insufficient_quota" || (typeof resp.error === "string" && resp.error.toLowerCase().includes("quota")))) {
+      append(nodeMsg(`⚠️ Quota on ${selectedModel} — attempting fallback to gpt-4o-mini on primary...`, "assistant"));
+      resp = await callWorker(PRIMARY_API, "gpt-4o-mini", [{ role: "user", content: text }]);
+    }
+
+    // If primary network error or any error and backup is configured -> try backup
+    if ((resp && resp.error) || !resp) {
+      // If the selected model is not gpt-4o-mini but backup only supports gpt-4o-mini,
+      // inform user we will try the backup with gpt-4o-mini.
+      const usingBackupModel = "gpt-4o-mini";
+      append(nodeMsg("ℹ️ Trying backup worker (" + BACKUP_API + ") with model " + usingBackupModel + "...", "assistant"));
+
+      const respBackup = await callWorker(BACKUP_API, usingBackupModel, [{ role: "user", content: text }]);
+
+      hideTyping();
+
+      if (respBackup && !respBackup.error) {
+        const replyBackup = respBackup.choices?.[0]?.message?.content ?? respBackup.response ?? "⚠️ No reply from backup";
+        append(nodeMsg(replyBackup, "assistant"));
+        return;
+      } else {
+        // Both failed: show readable errors (primary and backup)
+        const primaryErr = resp && resp.error ? readableError(resp.error) : "No response from primary";
+        const backupErr  = respBackup && respBackup.error ? readableError(respBackup.error) : "No response from backup";
+        append(nodeMsg("❌ Both primary and backup failed.\nPrimary error: " + primaryErr + "\nBackup error: " + backupErr, "assistant"));
+        return;
+      }
+    }
+
+    // Success from primary
+    hideTyping();
+    if (resp.error) {
+      append(nodeMsg("❌ Error: " + readableError(resp.error), "assistant"));
+      return;
+    }
+
+    const reply = resp.choices?.[0]?.message?.content ?? resp.response ?? "⚠️ No reply";
+    append(nodeMsg(reply, "assistant"));
+  }
+
+  /* When user changes model to a locked one, verify invite code */
+  if (providerSel) {
+    providerSel.addEventListener("change", async () => {
+      const opt = providerSel.selectedOptions[0];
+      if (!opt) return;
+      const locked = opt.dataset.locked === "true";
+      const model = opt.value;
+
+      if (!locked) return;
+
+      // If backup is only gpt-4o-mini, locked models other than gpt-4o-mini can't be unlocked on backup.
+      const stored = localStorage.getItem("invite_for_" + model);
+      if (stored) return; // already unlocked
+
+      const code = prompt(`🔒 ${model} requires an invite code. Enter it now:`);
+      if (!code) {
+        alert("No code entered — switching to GPT-4o-mini.");
+        providerSel.value = "gpt-4o-mini";
+        return;
+      }
+
+      append(nodeMsg("Verifying invite…", "assistant"));
+      const ok = await verifyInvite(model, code);
+      // remove last system message (verification)
+      const sys = chatEl.querySelector(".msg.assistant:last-child");
+      if (sys && sys.textContent === "Verifying invite…") sys.remove();
+
+      if (ok) {
+        localStorage.setItem("invite_for_" + model, code);
+        alert("✅ Invite accepted for " + model);
+      } else {
+        alert("❌ Invalid invite or unreachable verifier. Reverting to GPT-4o-mini.");
+        providerSel.value = "gpt-4o-mini";
+      }
+    });
+  }
+
+  /* Wire UI: send button and Enter key */
   sendBtn.addEventListener("click", async () => {
     const t = promptEl.value.trim();
     if (!t) return;
     promptEl.value = "";
     await sendMessage(t);
   });
-
   promptEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendBtn.click();
     }
   });
+  if (clearBtn) clearBtn.addEventListener("click", () => chatEl.innerHTML = "");
 
-  clearBtn.addEventListener("click", () => { chatEl.innerHTML = ""; });
-
-  // friendly startup hint
-  (function startupHint() {
-    const intro = createMsg("Welcome — select a model and send a message. Locked models (GPT-4.1, GPT-4o) require invite codes. ⚠ ONLY 3 MESEGES PER MINETE IF YOU GET ERROR JUST WAIT 40 SEC ⚠", "assistant");
-    addMeta(intro, "Tip: press Enter to send. Locked models will prompt for a code.");
-    chatEl.appendChild(intro);
+  /* Startup hint */
+  (function startHint() {
+    const intro = nodeMsg("Ready. Primary: " + PRIMARY_API + " • Backup: " + BACKUP_API, "assistant");
+    intro.appendChild(nodeMeta("Locked models require invite codes. Backup supports only gpt-4o-mini."));
+    append(intro);
   })();
 
 })();
