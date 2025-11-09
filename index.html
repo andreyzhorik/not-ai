@@ -123,68 +123,223 @@
     <option value="deepseek">DeepSeek</option>
   `;
 
+  // -----------------------
+  // Safe Markdown -> HTML
+  // Code blocks are extracted first so other regexes won't touch them
+  // -----------------------
   function markdownToHTML(md) {
-  if (!md) return "";
+    if (!md) return "";
 
-  // Escape < and > so markdown can’t inject HTML
-  md = md.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // escape HTML
+    md = md.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  // Code blocks ```
-  md = md.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`);
+    // Extract fenced code blocks and replace them with placeholders
+    const codeBlocks = [];
+    md = md.replace(/```([\s\S]*?)```/g, (match, code) => {
+      const id = codeBlocks.length;
+      codeBlocks.push(code);
+      return `@@CODE_BLOCK_${id}@@`;
+    });
 
-  // Headings ####, ###, ##, #
-  md = md.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
-  md = md.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
-  md = md.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
-  md = md.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-  md = md.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-  md = md.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    // Headings
+    md = md.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+    md = md.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+    md = md.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    md = md.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    md = md.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    md = md.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
-  // Horizontal rule ---
-  md = md.replace(/^---$/gim, '<hr>');
+    // Horizontal rule
+    md = md.replace(/(^|\n)---(\n|$)/g, '\n<hr>\n');
 
-  // Blockquotes >
-  md = md.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+    // Blockquotes
+    md = md.replace(/(^|\n)> (.*)/g, '$1<blockquote>$2</blockquote>');
 
-  // Ordered lists 1. item
-  md = md.replace(/^\d+\.\s+(.*$)/gim, '<ol><li>$1</li></ol>');
-  md = md.replace(/<\/ol>\s*<ol>/gim, ''); // merge adjacent lists
+    // Ordered lists
+    // Convert contiguous lines starting with "1. " etc into a single <ol>
+    md = md.replace(/(^|\n)(\d+\.\s+.+(\n\d+\.\s+.+)*)/g, (m, p1, group) => {
+      const items = group.trim().split(/\n+/).map(line => line.replace(/^\d+\.\s+/, ''));
+      return p1 + '<ol>' + items.map(i => `<li>${i}</li>`).join('') + '</ol>';
+    });
 
-  // Unordered lists - item or * item
-  md = md.replace(/^[-*]\s+(.*$)/gim, '<ul><li>$1</li></ul>');
-  md = md.replace(/<\/ul>\s*<ul>/gim, ''); // merge adjacent lists
+    // Unordered lists (- or *)
+    md = md.replace(/(^|\n)(([-*]\s+.+)(\n[-*]\s+.+)*)/g, (m, p1, group) => {
+      // ignore lists that are inside code placeholders
+      if (/@@CODE_BLOCK_\d+@@/.test(group)) return m;
+      const items = group.trim().split(/\n+/).map(line => line.replace(/^[-*]\s+/, ''));
+      return p1 + '<ul>' + items.map(i => `<li>${i}</li>`).join('') + '</ul>';
+    });
 
-  // Bold **text**
-  md = md.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    // Bold and Italic
+    md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    md = md.replace(/(^|[^*])\*(?!\*)([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
+    md = md.replace(/(^|[^_])_(?!_)([^_]+)_(?!_)/g, '$1<em>$2</em>');
 
-  // Italic *text* or _text_
-  md = md.replace(/(^|[^*])\*(?!\*)([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
-  md = md.replace(/(^|[^_])_(?!_)([^_]+)_(?!_)/g, '$1<em>$2</em>');
+    // Inline code (only single backticks)
+    md = md.replace(/`([^`\n]+)`/g, '<code class="inline">$1</code>');
 
-  // Inline code `code`
-  md = md.replace(/`([^`\n]+)`/g, "<code class='inline'>$1</code>");
+    // Links [text](url)
+    md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
-  // Links [text](url)
-  md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    // Paragraphs and line breaks
+    // Convert two or more newlines into paragraph separation
+    md = md.replace(/\n{2,}/g, '</p><p>');
+    md = md.replace(/\n/g, '<br>');
 
-  // Line breaks
-  md = md.replace(/\n{2,}/g, "</p><p>");
-  md = md.replace(/\n/g, "<br>");
+    // Wrap in paragraph if not heading/blockquote/list/hr already
+    md = `<p>${md}</p>`;
+    md = md.replace(/<p>(<(h\d|ul|ol|blockquote|pre|hr)[\s\S]*?>[\s\S]*?<\/\2>)<\/p>/g, '$1'); // unwrap block elements
 
-  // Wrap paragraphs
-  md = `<p>${md}</p>`;
-  return md;
-}
+    // Restore code blocks
+    md = md.replace(/@@CODE_BLOCK_(\d+)@@/g, (m, idx) => {
+      const code = codeBlocks[Number(idx)] || "";
+      // do not escape code content further — keep original spacing/newlines
+      return `<pre><code>${code.replace(/&lt;/g,'<').replace(/&gt;/g,'>')}</code></pre>`;
+    });
 
+    return md;
+  }
 
+  // -----------------------
+  // Append message and then add copy buttons to code blocks
+  // -----------------------
   function appendMsg(text, role) {
     const div = document.createElement("div");
     div.className = `msg ${role}`;
     div.innerHTML = markdownToHTML(text);
     chatEl.appendChild(div);
     chatEl.scrollTop = chatEl.scrollHeight;
+
+    // After adding, ensure copy buttons are attached
+    addCopyButtonsForNode(div);
   }
 
+  // -----------------------
+  // Copy button logic
+  // - Adds a small button to each <pre><code> if not already added
+  // - Uses innerText for copy to preserve whitespace/formatting
+  // -----------------------
+  function addCopyButtonsForNode(root) {
+    if (!root) return;
+    root.querySelectorAll('pre').forEach(pre => {
+      if (pre.dataset.copyAttached) return; // skip duplicates
+      const code = pre.querySelector('code');
+      if (!code) return;
+
+      // Create button
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.type = 'button';
+      btn.textContent = '📋 Copy';
+      btn.title = 'Copy code';
+
+      // Style (inline so it's easy to drop in)
+      btn.style.position = 'absolute';
+      btn.style.top = '8px';
+      btn.style.right = '8px';
+      btn.style.background = 'rgba(30,41,59,0.95)';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+      btn.style.padding = '4px 8px';
+      btn.style.borderRadius = '6px';
+      btn.style.cursor = 'pointer';
+      btn.style.fontSize = '12px';
+      btn.style.zIndex = '10';
+      btn.style.opacity = '0.85';
+
+      // wrap pre so we can position the button inside
+      pre.style.position = 'relative';
+      pre.appendChild(btn);
+
+      // Click action: copy the code text preserving whitespace
+      btn.addEventListener('click', async () => {
+        try {
+          const textToCopy = code.innerText;
+          await navigator.clipboard.writeText(textToCopy);
+          const prev = btn.textContent;
+          btn.textContent = '✅ Copied';
+          setTimeout(() => btn.textContent = '📋 Copy', 1400);
+        } catch (e) {
+          console.error('Copy failed', e);
+          btn.textContent = '❌';
+          setTimeout(() => btn.textContent = '📋 Copy', 1200);
+        }
+      });
+
+      pre.dataset.copyAttached = '1';
+    });
+  }
+
+  // MutationObserver: For safety, auto-attach to any new assistant node added (optional but robust)
+  const mo = new MutationObserver(muts => {
+    muts.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.nodeType === 1) addCopyButtonsForNode(node);
+      });
+    });
+  });
+  mo.observe(chatEl, { childList: true, subtree: true });
+
+  // -----------------------
+  // Worker caller (unchanged behavior from your last working copy)
+  // -----------------------
+  async function callWorker(baseUrl, provider, messages) {
+    try {
+      const res = await fetch(baseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, messages }),
+      });
+      const txt = await res.text();
+      try {
+        return JSON.parse(txt);
+      } catch (e) {
+        return { error: "Invalid JSON from worker", raw: txt };
+      }
+    } catch (err) {
+      return { error: err.message || String(err) };
+    }
+  }
+
+  async function sendMessage(text) {
+    const model = providerSel.value;
+    appendMsg(text, "user");
+    showTyping();
+
+    const primaryResp = await callWorker(PRIMARY_API, model, [{ role: "user", content: text }]);
+    hideTyping();
+
+    const primaryText = primaryResp && typeof primaryResp.output_text === "string" ? primaryResp.output_text : null;
+    const primarySaysNoReply = primaryText && primaryText.trim().startsWith("⚠️ No reply");
+
+    if (primarySaysNoReply) {
+      showTyping();
+      const backupResp = await callWorker(BACKUP_API, model, [{ role: "user", content: text }]);
+      hideTyping();
+
+      const backupText = backupResp && typeof backupResp.output_text === "string" ? backupResp.output_text : null;
+
+      if (backupText) {
+        const friendlyModelName = (model || "gpt-4o-mini").replace(/-/g, " ");
+        appendMsg(`⚠️ Primary server failed — using backup. ${friendlyModelName}`, "assistant");
+        appendMsg(backupText, "assistant");
+        return;
+      } else {
+        const backupErr = backupResp?.error || "No response from backup";
+        appendMsg(`❌ Both servers failed: ${backupErr}`, "assistant");
+        return;
+      }
+    }
+
+    if (primaryText) {
+      appendMsg(primaryText, "assistant");
+    } else {
+      const errMsg = primaryResp?.error || "Unknown error from primary";
+      appendMsg(`❌ Primary server error: ${errMsg}`, "assistant");
+    }
+  }
+
+  // show/hide typing helpers (copied from your code)
   function showTyping() {
     if (document.getElementById("typingIndicator")) return;
     const wrap = document.createElement("div");
@@ -198,75 +353,6 @@
   function hideTyping() {
     const el = document.getElementById("typingIndicator");
     if (el) el.remove();
-  }
-
-  // Robust worker caller: returns { output_text, error }
-  async function callWorker(baseUrl, provider, messages) {
-    try {
-      const res = await fetch(baseUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, messages }),
-      });
-
-      // try to parse json safely
-      const txt = await res.text();
-      try {
-        return JSON.parse(txt);
-      } catch (e) {
-        // If parsing fails, return a coherent error object so caller can decide
-        return { error: "Invalid JSON from worker", raw: txt };
-      }
-    } catch (err) {
-      return { error: err.message || String(err) };
-    }
-  }
-
-  async function sendMessage(text) {
-    const model = providerSel.value;
-    appendMsg(text, "user");
-    showTyping();
-
-    // Try primary first
-    const primaryResp = await callWorker(PRIMARY_API, model, [{ role: "user", content: text }]);
-    hideTyping();
-
-    // Normalize primary output_text if present
-    const primaryText = primaryResp && typeof primaryResp.output_text === "string" ? primaryResp.output_text : null;
-
-    // ONLY trigger backup when primary explicitly says "⚠️ No reply" (or starts with it)
-    const primarySaysNoReply = primaryText && primaryText.trim().startsWith("⚠️ No reply");
-
-    if (primarySaysNoReply) {
-      // show system message only after we confirm backup succeeds
-      showTyping();
-      const backupResp = await callWorker(BACKUP_API, model, [{ role: "user", content: text }]);
-      hideTyping();
-
-      const backupText = backupResp && typeof backupResp.output_text === "string" ? backupResp.output_text : null;
-
-      if (backupText) {
-        // Friendly display of which model we're switching to (user asked for "gpt-4o mini" text)
-        const friendlyModelName = (model || "gpt-4o-mini").replace(/-/g, " ");
-        appendMsg(`⚠️ Primary server failed — using backup. ${friendlyModelName}`, "assistant");
-        appendMsg(backupText, "assistant");
-        return;
-      } else {
-        // backup failed — show both errors (primary had No reply, backup errored)
-        const backupErr = backupResp?.error || "No response from backup";
-        appendMsg(`❌ Both servers failed: ${backupErr}`, "assistant");
-        return;
-      }
-    }
-
-    // If primary returned a normal reply (even if primaryResp.error exists but output_text present),
-    // show that. If there was an error and no output_text, treat as a failure message.
-    if (primaryText) {
-      appendMsg(primaryText, "assistant");
-    } else {
-      const errMsg = primaryResp?.error || "Unknown error from primary";
-      appendMsg(`❌ Primary server error: ${errMsg}`, "assistant");
-    }
   }
 
   sendBtn.onclick = () => {
@@ -285,40 +371,6 @@
 
   clearBtn.onclick = () => (chatEl.innerHTML = "");
 })();
-  function addCopyButtons() {
-  document.querySelectorAll('.msg.assistant pre').forEach(pre => {
-    // avoid duplicates
-    if (pre.querySelector('.copy-btn')) return;
-
-    const btn = document.createElement('button');
-    btn.textContent = '📋 Copy';
-    btn.className = 'copy-btn';
-    btn.onclick = () => {
-      const code = pre.querySelector('code').innerText;
-      navigator.clipboard.writeText(code).then(() => {
-        btn.textContent = '✅ Copied!';
-        setTimeout(() => btn.textContent = '📋 Copy', 1500);
-      });
-    };
-
-    pre.style.position = 'relative';
-    btn.style.position = 'absolute';
-    btn.style.top = '6px';
-    btn.style.right = '8px';
-    btn.style.background = '#1e293b';
-    btn.style.color = '#f8fafc';
-    btn.style.border = 'none';
-    btn.style.padding = '2px 6px';
-    btn.style.borderRadius = '6px';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '12px';
-    btn.style.opacity = '0.7';
-    btn.onmouseenter = () => btn.style.opacity = '1';
-    btn.onmouseleave = () => btn.style.opacity = '0.7';
-
-    pre.appendChild(btn);
-  });
-}
 </script>
 </body>
 </html>
