@@ -128,16 +128,22 @@
 
   async function callWorker(baseUrl, provider, messages) {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
+
       const res = await fetch(baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, messages }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+
       const txt = await res.text();
       try {
         return JSON.parse(txt);
       } catch {
-        return { error: "Invalid JSON" };
+        return { error: "Invalid JSON", raw: txt };
       }
     } catch (err) {
       return { error: err.message };
@@ -146,17 +152,16 @@
 
   async function sendMessage(text) {
     const model = providerSel.value || "gpt-4o-mini";
-    append(nodeMsg("💬 " + text, "user"));
+    append(nodeMsg(text, "user"));
     showTyping();
 
-    // Always try PRIMARY first
     let resp = await callWorker(PRIMARY_API, model, [{ role: "user", content: text }]);
 
-    // Only use backup if primary fails
+    // Fallback to backup if primary fails
     if (resp.error || !resp.output_text) {
       console.warn("Primary failed, switching to backup...");
       hideTyping();
-      append(nodeMsg("⚠️ Primary server failed — using backup...", "assistant"));
+      append(nodeMsg("⚠️ Connection issue — switching to backup server...", "assistant"));
       showTyping();
       resp = await callWorker(BACKUP_API, model, [{ role: "user", content: text }]);
     }
@@ -169,7 +174,15 @@
     }
 
     const reply = resp.output_text || resp.choices?.[0]?.message?.content || "⚠️ No reply";
-    append(nodeMsg(reply, "assistant"));
+
+    // 🌈 Add light emoji flavor to AI’s tone
+    const emojiReply = reply.replace(/(\.|\!|\?)(\s|$)/g, m => {
+      const emojiList = ["🤖", "✨", "💡", "🚀", "😊", "🔥"];
+      const randomEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
+      return `${m.trim()} ${randomEmoji} `;
+    });
+
+    append(nodeMsg(emojiReply, "assistant"));
   }
 
   sendBtn.onclick = async () => {
@@ -188,7 +201,7 @@
 
   clearBtn.onclick = () => (chatEl.innerHTML = "");
 
-  append(nodeMsg("👋 Welcome to **NOT AI** — Markdown, code & lists supported!<br>Try typing: *Hello*, **bold**, or `inline code`."));
+  append(nodeMsg("👋 Welcome to **NOT AI** — fast, simple, emoji-friendly chat!<br>Try typing: *Hello*, **bold**, or `inline code`."));
 })();
 </script>
 </body>
