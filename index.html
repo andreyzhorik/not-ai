@@ -72,81 +72,141 @@
   </div>
 
 <script>
-const primaryURL = "https://plain-pine-b32a1234567890.cloudflareworkers.net"; // your primary worker
-const backupURL  = "https://wispy-voice-741d1234567890.cloudflareworkers.net"; // your backup worker
-const model = "gpt-4o-mini"; // main AI model name
+(() => {
+  const PRIMARY_API = "https://plain-pine-b32a.mrviktor2426.workers.dev/";
+  const BACKUP_API  = "https://wispy-voice-741d.mrviktor2426.workers.dev/";
 
-// === MAIN SEND FUNCTION ===
-async function sendToAI(messages) {
-  try {
-    // --- PRIMARY AI ---
-    const primaryRes = await fetch(primaryURL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: model, messages }),
-    });
-    const primaryData = await primaryRes.json();
+  const providerSel = document.getElementById("provider");
+  const chatEl = document.getElementById("chat");
+  const promptEl = document.getElementById("prompt");
+  const sendBtn = document.getElementById("sendBtn");
+  const clearBtn = document.getElementById("clearBtn");
 
-    // If valid primary reply
-    if (primaryData.output_text && !primaryData.output_text.includes("⚠️ No reply")) {
-      return { text: primaryData.output_text, source: "primary" };
+  providerSel.innerHTML = `
+    <option value="gpt-4o-mini">GPT-4o-mini</option>
+    <option value="gpt-4o" data-locked="true">GPT-4o (locked)</option>
+    <option value="gpt-4.1-mini" data-locked="true">GPT-4.1-mini (locked)</option>
+    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+    <option value="deepseek">DeepSeek</option>
+  `;
+
+  function markdownToHTML(text) {
+    return text
+      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.*?)\*/g, "<em>$1</em>")
+      .replace(/\n/g, "<br>");
+  }
+
+  function appendMsg(text, role) {
+    const div = document.createElement("div");
+    div.className = `msg ${role}`;
+    div.innerHTML = markdownToHTML(text);
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function showTyping() {
+    if (document.getElementById("typingIndicator")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "msg assistant";
+    wrap.id = "typingIndicator";
+    wrap.innerHTML = '<div class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = document.getElementById("typingIndicator");
+    if (el) el.remove();
+  }
+
+  // Robust worker caller: returns { output_text, error }
+  async function callWorker(baseUrl, provider, messages) {
+    try {
+      const res = await fetch(baseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, messages }),
+      });
+
+      // try to parse json safely
+      const txt = await res.text();
+      try {
+        return JSON.parse(txt);
+      } catch (e) {
+        // If parsing fails, return a coherent error object so caller can decide
+        return { error: "Invalid JSON from worker", raw: txt };
+      }
+    } catch (err) {
+      return { error: err.message || String(err) };
+    }
+  }
+
+  async function sendMessage(text) {
+    const model = providerSel.value;
+    appendMsg(text, "user");
+    showTyping();
+
+    // Try primary first
+    const primaryResp = await callWorker(PRIMARY_API, model, [{ role: "user", content: text }]);
+    hideTyping();
+
+    // Normalize primary output_text if present
+    const primaryText = primaryResp && typeof primaryResp.output_text === "string" ? primaryResp.output_text : null;
+
+    // ONLY trigger backup when primary explicitly says "⚠️ No reply" (or starts with it)
+    const primarySaysNoReply = primaryText && primaryText.trim().startsWith("⚠️ No reply");
+
+    if (primarySaysNoReply) {
+      // show system message only after we confirm backup succeeds
+      showTyping();
+      const backupResp = await callWorker(BACKUP_API, model, [{ role: "user", content: text }]);
+      hideTyping();
+
+      const backupText = backupResp && typeof backupResp.output_text === "string" ? backupResp.output_text : null;
+
+      if (backupText) {
+        // Friendly display of which model we're switching to (user asked for "gpt-4o mini" text)
+        const friendlyModelName = (model || "gpt-4o-mini").replace(/-/g, " ");
+        appendMsg(`⚠️ Primary server failed — using backup. ${friendlyModelName}`, "assistant");
+        appendMsg(backupText, "assistant");
+        return;
+      } else {
+        // backup failed — show both errors (primary had No reply, backup errored)
+        const backupErr = backupResp?.error || "No response from backup";
+        appendMsg(`❌ Both servers failed: ${backupErr}`, "assistant");
+        return;
+      }
     }
 
-    // --- BACKUP AI ---
-    appendSystem("⚠️ Primary server failed — using backup. gpt-4o mini");
-    const backupRes = await fetch(backupURL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: model, messages }),
-    });
-    const backupData = await backupRes.json();
-    const backupText = backupData.output_text || "⚠️ Backup server returned no reply";
-
-    return { text: backupText, source: "backup" };
-
-  } catch (err) {
-    console.error("❌ Both servers failed:", err);
-    return { text: "❌ Both servers failed: " + err.message, source: "error" };
+    // If primary returned a normal reply (even if primaryResp.error exists but output_text present),
+    // show that. If there was an error and no output_text, treat as a failure message.
+    if (primaryText) {
+      appendMsg(primaryText, "assistant");
+    } else {
+      const errMsg = primaryResp?.error || "Unknown error from primary";
+      appendMsg(`❌ Primary server error: ${errMsg}`, "assistant");
+    }
   }
-}
 
-// === CHAT INPUT HANDLER ===
-async function handleSend() {
-  const input = document.getElementById("userInput");
-  const text = input.value.trim();
-  if (!text) return;
+  sendBtn.onclick = () => {
+    const txt = promptEl.value.trim();
+    if (!txt) return;
+    promptEl.value = "";
+    sendMessage(txt);
+  };
 
-  appendMessage("user", text);
-  input.value = "";
+  promptEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
 
-  const aiMsg = appendMessage("ai", "💭 Thinking...");
-
-  const messages = [{ role: "user", content: text }];
-  const result = await sendToAI(messages);
-
-  aiMsg.textContent = result.text;
-}
-
-// === MESSAGE APPEND HELPERS ===
-function appendMessage(role, text) {
-  const chat = document.getElementById("chat");
-  const msg = document.createElement("div");
-  msg.className = "msg " + role;
-  msg.textContent = text;
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
-  return msg;
-}
-
-// Adds system messages like “⚠️ Primary failed”
-function appendSystem(text) {
-  const chat = document.getElementById("chat");
-  const sys = document.createElement("div");
-  sys.className = "msg system";
-  sys.textContent = text;
-  chat.appendChild(sys);
-  chat.scrollTop = chat.scrollHeight;
-}
+  clearBtn.onclick = () => (chatEl.innerHTML = "");
+})();
 </script>
 </body>
 </html>
