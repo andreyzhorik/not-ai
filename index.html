@@ -359,54 +359,112 @@
   const clearBtn = document.getElementById("clearBtn");
 
   // --------------------------
-  // Populate model dropdown
+  // Invite code system
   // --------------------------
-  providerSel.innerHTML = `
-    <option value="gpt-4o-mini">GPT-4o-mini (free and fast ⏩)</option>
-    <option value="gpt-4.1-mini" data-locked="true">GPT-4.1-mini (locked and good 🤔)</option>
-    <option value="gemini-2.5-flash">Gemini 2.5 Flash (free and nerd 🤓)</option>
-    <option value="gemini-2.5-pro" data-locked="true">Gemini 2.5 Pro (locked and very smart 🧠)</option>
-  `;
+  const VERIFY_URL = `${PRIMARY_API}?verify_code=`;
+  let inviteCode = localStorage.getItem("inviteCode");
+  let isVerified = localStorage.getItem("isVerified") === "true";
 
-  // --------------------------
-  // Markdown to HTML conversion
-  // --------------------------
-  function markdownToHTML(md) {
-    if (!md) return "";
-    md = md.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    const codeBlocks = [];
-    md = md.replace(/```([\s\S]*?)```/g, (match, code) => {
-      const id = codeBlocks.length;
-      codeBlocks.push(code);
-      return `@@CODE_BLOCK_${id}@@`;
-    });
-
-    // Headings
-    md = md.replace(/^###### (.*$)/gim, '<h6>$1</h6>')
-           .replace(/^##### (.*$)/gim, '<h5>$1</h5>')
-           .replace(/^#### (.*$)/gim, '<h4>$1</h4>')
-           .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-           .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-           .replace(/^# (.*$)/gim, '<h1>$1</h1>');
-
-    // Horizontal rules
-    md = md.replace(/(^|\n)---(\n|$)/g, '\n<hr>\n');
-
-    // Blockquotes
-    md = md.replace(/(^|\n)> (.*)/g, '$1<blockquote>$2</blockquote>');
-
-    // Restore code blocks
-    md = md.replace(/@@CODE_BLOCK_(\d+)@@/g, (m, idx) => {
-      const code = codeBlocks[Number(idx)] || "";
-      return `<pre><code>${code.replace(/&lt;/g,'<').replace(/&gt;/g,'>')}</code></pre>`;
-    });
-
-    return `<p>${md}</p>`;
+  async function verifyInvite() {
+    const code = prompt("Enter invite code to unlock locked models:");
+    if (!code) return alert("❌ No code entered.");
+    try {
+      const res = await fetch(VERIFY_URL + encodeURIComponent(code));
+      const data = await res.json();
+      if (data.valid) {
+        localStorage.setItem("inviteCode", code);
+        localStorage.setItem("isVerified", "true");
+        alert("✅ Invite code accepted! Locked models are now unlocked.");
+        isVerified = true;
+        populateModels();
+      } else {
+        alert("❌ Invalid invite code.");
+      }
+    } catch (err) {
+      alert("⚠️ Error verifying code: " + err.message);
+    }
   }
 
   // --------------------------
-  // Append message and copy buttons
+  // Populate model dropdown
+  // --------------------------
+  function populateModels() {
+    providerSel.innerHTML = `
+      <option value="gpt-4o-mini">GPT-4o-mini (free and fast ⏩)</option>
+      <option value="gpt-4.1-mini" ${!isVerified ? 'data-locked="true"' : ''}>
+        GPT-4.1-mini ${!isVerified ? '(🔒 locked and good 🤔)' : '(unlocked and good 🤔)'}
+      </option>
+      <option value="gemini-2.5-flash">Gemini 2.5 Flash (free and nerd 🤓)</option>
+      <option value="gemini-2.5-pro" ${!isVerified ? 'data-locked="true"' : ''}>
+        Gemini 2.5 Pro ${!isVerified ? '(🔒 locked and very good 🧠)' : '(unlocked and very good 🧠)'}
+      </option>
+    `;
+  }
+
+  populateModels();
+
+  // --------------------------
+// Markdown → HTML
+// --------------------------
+function markdownToHTML(md) {
+  if (!md) return "";
+  md = md.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // Save code blocks (```code```)
+  const codeBlocks = [];
+  md = md.replace(/```([\s\S]*?)```/g, (m, code) => {
+    const id = codeBlocks.length;
+    codeBlocks.push(code);
+    return `@@CODE_BLOCK_${id}@@`;
+  });
+
+  // Headers
+  md = md
+    .replace(/^###### (.*$)/gim, "<h6>$1</h6>")
+    .replace(/^##### (.*$)/gim, "<h5>$1</h5>")
+    .replace(/^#### (.*$)/gim, "<h4>$1</h4>")
+    .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+    .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+    .replace(/^# (.*$)/gim, "<h1>$1</h1>");
+
+  // Blockquotes
+  md = md.replace(/(^|\n)> (.*)/g, "$1<blockquote>$2</blockquote>");
+
+  // Horizontal rule
+  md = md.replace(/(^|\n)---(\n|$)/g, "\n<hr>\n");
+
+  // Lists
+  md = md
+    .replace(/^\s*[-*] (.*)/gim, "<ul><li>$1</li></ul>")
+    .replace(/<\/ul>\s*<ul>/gim, "")
+    .replace(/^\s*\d+\. (.*)/gim, "<ol><li>$1</li></ol>")
+    .replace(/<\/ol>\s*<ol>/gim, "");
+
+  // Inline styles
+  md = md
+    .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")      // bold
+    .replace(/\*(.*?)\*/g, "<i>$1</i>")          // italic
+    .replace(/__(.*?)__/g, "<u>$1</u>")          // underline
+    .replace(/~~(.*?)~~/g, "<s>$1</s>")          // strikethrough
+    .replace(/`([^`]+)`/g, "<code>$1</code>");   // inline code
+
+  // Links
+  md = md.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+  // Replace line breaks
+  md = md.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
+
+  // Restore code blocks
+  md = md.replace(/@@CODE_BLOCK_(\d+)@@/g, (_, i) => {
+    const code = codeBlocks[+i] || "";
+    return `<pre><code>${code}</code></pre>`;
+  });
+
+  return `<p>${md}</p>`;
+}
+
+  // --------------------------
+  // Append message + copy btn
   // --------------------------
   function appendMsg(text, role) {
     const div = document.createElement("div");
@@ -418,40 +476,34 @@
   }
 
   function addCopyButtonsForNode(root) {
-    if (!root) return;
-    root.querySelectorAll('pre').forEach(pre => {
+    root.querySelectorAll("pre").forEach(pre => {
       if (pre.dataset.copyAttached) return;
-      const code = pre.querySelector('code');
+      const code = pre.querySelector("code");
       if (!code) return;
-      const btn = document.createElement('button');
-      btn.className = 'copy-btn';
-      btn.type = 'button';
-      btn.textContent = '📋 Copy';
-      btn.title = 'Copy code';
-      pre.style.position = 'relative';
+      const btn = document.createElement("button");
+      btn.className = "copy-btn";
+      btn.textContent = "📋 Copy";
+      btn.title = "Copy code";
+      pre.style.position = "relative";
       pre.appendChild(btn);
-      btn.addEventListener('click', async () => {
+      btn.addEventListener("click", async () => {
         try {
           await navigator.clipboard.writeText(code.innerText);
-          btn.textContent = '✅ Copied';
-          setTimeout(()=>btn.textContent='📋 Copy',1400);
-        } catch (e) {
-          btn.textContent = '❌';
-          setTimeout(()=>btn.textContent='📋 Copy',1200);
+          btn.textContent = "✅ Copied";
+          setTimeout(() => (btn.textContent = "📋 Copy"), 1200);
+        } catch {
+          btn.textContent = "❌";
+          setTimeout(() => (btn.textContent = "📋 Copy"), 1200);
         }
       });
-      pre.dataset.copyAttached = '1';
+      pre.dataset.copyAttached = "1";
     });
   }
 
-  const mo = new MutationObserver(muts => {
-    muts.forEach(m => {
-      m.addedNodes.forEach(n => {
-        if (n.nodeType === 1) addCopyButtonsForNode(n);
-      });
-    });
+  const mo = new MutationObserver(m => {
+    m.forEach(r => r.addedNodes.forEach(n => n.nodeType === 1 && addCopyButtonsForNode(n)));
   });
-  mo.observe(chatEl, { childList:true, subtree:true });
+  mo.observe(chatEl, { childList: true, subtree: true });
 
   // --------------------------
   // Worker call
@@ -461,11 +513,17 @@
       const res = await fetch(baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, messages })
+        body: JSON.stringify({ provider, messages }),
       });
       const txt = await res.text();
-      try { return JSON.parse(txt); } catch(e) { return { error: "Invalid JSON", raw: txt }; }
-    } catch (err) { return { error: err.message || String(err) }; }
+      try {
+        return JSON.parse(txt);
+      } catch {
+        return { error: "Invalid JSON", raw: txt };
+      }
+    } catch (err) {
+      return { error: err.message || String(err) };
+    }
   }
 
   // --------------------------
@@ -473,51 +531,53 @@
   // --------------------------
   async function sendMessage(text) {
     const model = providerSel.value;
-    appendMsg(text, "user");
-    showTyping();
+    const isLocked = providerSel.selectedOptions[0]?.dataset.locked === "true";
 
-    const primaryResp = await callWorker(PRIMARY_API, model, [{ role:"user", content:text }]);
-    hideTyping();
-
-    const primaryText = primaryResp && typeof primaryResp.output_text === "string" ? primaryResp.output_text : null;
-    const primaryNoReply = primaryText && primaryText.trim().startsWith("⚠️ No reply");
-
-    if (primaryNoReply) {
-      showTyping();
-      const backupResp = await callWorker(BACKUP_API, model, [{ role:"user", content:text }]);
-      hideTyping();
-      const backupText = backupResp && typeof backupResp.output_text === "string" ? backupResp.output_text : null;
-      if (backupText) {
-        appendMsg(`⚠️ Primary server failed — using backup. ${model.replace(/-/g," ")}`, "assistant");
-        appendMsg(backupText, "assistant");
-        return;
-      } else appendMsg(`❌ Both servers failed: ${backupResp?.error || "No response from backup"}`, "assistant");
+    if (isLocked && !isVerified) {
+      appendMsg(`🔒 "${model}" is locked. Enter invite code to unlock.`, "assistant");
+      verifyInvite();
       return;
     }
 
-    if (primaryText) appendMsg(primaryText,"assistant");
-    else appendMsg(`❌ Primary server error: ${primaryResp?.error || "Unknown error"}`, "assistant");
+    appendMsg(text, "user");
+    showTyping();
+
+    let resp = await callWorker(PRIMARY_API, model, [{ role: "user", content: text }]);
+    hideTyping();
+
+    let reply = resp?.output_text;
+    if (!reply || reply.trim().startsWith("⚠️ No reply") || resp.error) {
+      appendMsg("⚠️ Primary failed — trying backup...", "assistant");
+      showTyping();
+      resp = await callWorker(BACKUP_API, model, [{ role: "user", content: text }]);
+      hideTyping();
+      reply = resp?.output_text;
+    }
+
+    if (reply) appendMsg(reply, "assistant");
+    else appendMsg(`❌ Error: ${resp?.error || "No valid response"}`, "assistant");
   }
 
   // --------------------------
-  // Typing indicator helpers
+  // Typing bubble
   // --------------------------
   function showTyping() {
-    if(document.getElementById("typingIndicator")) return;
+    if (document.getElementById("typingIndicator")) return;
     const wrap = document.createElement("div");
     wrap.className = "msg assistant";
     wrap.id = "typingIndicator";
-    wrap.innerHTML = '<div class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
+    wrap.innerHTML =
+      '<div class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
   function hideTyping() {
     const el = document.getElementById("typingIndicator");
-    if(el) el.remove();
+    if (el) el.remove();
   }
 
   // --------------------------
-  // Event listeners
+  // Events
   // --------------------------
   sendBtn.onclick = () => {
     const txt = promptEl.value.trim();
@@ -527,7 +587,10 @@
   };
 
   promptEl.addEventListener("keydown", e => {
-    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendBtn.click(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
   });
 
   clearBtn.onclick = () => chatEl.innerHTML = "";
